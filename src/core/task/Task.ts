@@ -18,10 +18,12 @@ import {
 	type ClineMessage,
 	type ClineSay,
 	type ToolProgressStatus,
+	DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 	type HistoryItem,
 	TelemetryEventName,
 	TodoItem,
 	getApiProtocol,
+	getModelId,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CloudService } from "@roo-code/cloud"
@@ -41,6 +43,7 @@ import { ClineAskResponse } from "../../shared/WebviewMessage"
 import { defaultModeSlug } from "../../shared/modes"
 import { DiffStrategy } from "../../shared/tools"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
+import { getModelMaxOutputTokens } from "../../shared/api"
 
 // services
 import { UrlContentFetcher } from "../../services/browser/UrlContentFetcher"
@@ -215,7 +218,7 @@ export class Task extends EventEmitter<ClineEvents> {
 		enableDiff = false,
 		enableCheckpoints = true,
 		fuzzyMatchThreshold = 1.0,
-		consecutiveMistakeLimit = 3,
+		consecutiveMistakeLimit = DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 		task,
 		images,
 		historyItem,
@@ -254,7 +257,7 @@ export class Task extends EventEmitter<ClineEvents> {
 		this.browserSession = new BrowserSession(provider.context)
 		this.diffEnabled = enableDiff
 		this.fuzzyMatchThreshold = fuzzyMatchThreshold
-		this.consecutiveMistakeLimit = consecutiveMistakeLimit
+		this.consecutiveMistakeLimit = consecutiveMistakeLimit ?? DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
 		this.providerRef = new WeakRef(provider)
 		this.globalStoragePath = provider.context.globalStorageUri.fsPath
 		this.diffViewProvider = new DiffViewProvider(this.cwd)
@@ -413,7 +416,7 @@ export class Task extends EventEmitter<ClineEvents> {
 
 			await this.providerRef.deref()?.updateTaskHistory(historyItem)
 		} catch (error) {
-			console.error("Failed to save Roo messages:", error)
+			console.error("Failed to save SyntX's messages:", error)
 		}
 	}
 
@@ -721,7 +724,7 @@ export class Task extends EventEmitter<ClineEvents> {
 	async sayAndCreateMissingParamError(toolName: ToolName, paramName: string, relPath?: string) {
 		await this.say(
 			"error",
-			`Roo tried to use ${toolName}${
+			`SyntX tried to use ${toolName}${
 				relPath ? ` for '${relPath.toPosix()}'` : ""
 			} without value for required parameter '${paramName}'. Retrying...`,
 		)
@@ -1158,7 +1161,7 @@ export class Task extends EventEmitter<ClineEvents> {
 			throw new Error(`[RooCode#recursivelyMakeRooRequests] task ${this.taskId}.${this.instanceId} aborted`)
 		}
 
-		if (this.consecutiveMistakeCount >= this.consecutiveMistakeLimit) {
+		if (this.consecutiveMistakeLimit > 0 && this.consecutiveMistakeCount >= this.consecutiveMistakeLimit) {
 			const { response, text, images } = await this.ask(
 				"mistake_limit_reached",
 				t("common:errors.mistake_limit_guidance"),
@@ -1209,8 +1212,9 @@ export class Task extends EventEmitter<ClineEvents> {
 		// take a few seconds. For the best UX we show a placeholder api_req_started
 		// message with a loading spinner as this happens.
 
-		// Determine API protocol based on provider
-		const apiProtocol = getApiProtocol(this.apiConfiguration.apiProvider)
+		// Determine API protocol based on provider and model
+		const modelId = getModelId(this.apiConfiguration)
+		const apiProtocol = getApiProtocol(this.apiConfiguration.apiProvider, modelId)
 
 		await this.say(
 			"api_req_started",
@@ -1375,6 +1379,9 @@ export class Task extends EventEmitter<ClineEvents> {
 							cacheReadTokens += chunk.cacheReadTokens ?? 0
 							totalCost = chunk.totalCost
 							break
+						case "error":
+							await this.say("error", chunk.message)
+							return false
 						case "text": {
 							assistantMessage += chunk.text
 
@@ -1716,15 +1723,13 @@ export class Task extends EventEmitter<ClineEvents> {
 		const { contextTokens } = this.getTokenUsage()
 
 		if (contextTokens) {
-			// Default max tokens value for thinking models when no specific
-			// value is set.
-			const DEFAULT_THINKING_MODEL_MAX_TOKENS = 16_384
-
 			const modelInfo = this.api.getModel().info
 
-			const maxTokens = modelInfo.supportsReasoningBudget
-				? this.apiConfiguration.modelMaxTokens || DEFAULT_THINKING_MODEL_MAX_TOKENS
-				: modelInfo.maxTokens
+			const maxTokens = getModelMaxOutputTokens({
+				modelId: this.api.getModel().id,
+				model: modelInfo,
+				settings: this.apiConfiguration,
+			})
 
 			const contextWindow = modelInfo.contextWindow
 

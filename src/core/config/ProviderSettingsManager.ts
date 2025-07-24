@@ -5,6 +5,7 @@ import {
 	type ProviderSettingsEntry,
 	providerSettingsSchema,
 	providerSettingsSchemaDiscriminated,
+	DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 
@@ -26,6 +27,7 @@ export const providerProfilesSchema = z.object({
 			rateLimitSecondsMigrated: z.boolean().optional(),
 			diffSettingsMigrated: z.boolean().optional(),
 			openAiHeadersMigrated: z.boolean().optional(),
+			consecutiveMistakeLimitMigrated: z.boolean().optional(),
 		})
 		.optional(),
 })
@@ -42,12 +44,13 @@ export class ProviderSettingsManager {
 
 	private readonly defaultProviderProfiles: ProviderProfiles = {
 		currentApiConfigName: "default",
-		apiConfigs: { default: { id: this.defaultConfigId } },
+		apiConfigs: { default: { id: this.defaultConfigId, apiProvider: "syntx" } },
 		modeApiConfigs: this.defaultModeApiConfigs,
 		migrations: {
 			rateLimitSecondsMigrated: true, // Mark as migrated on fresh installs
 			diffSettingsMigrated: true, // Mark as migrated on fresh installs
 			openAiHeadersMigrated: true, // Mark as migrated on fresh installs
+			consecutiveMistakeLimitMigrated: true, // Mark as migrated on fresh installs
 		},
 	}
 
@@ -113,6 +116,7 @@ export class ProviderSettingsManager {
 						rateLimitSecondsMigrated: false,
 						diffSettingsMigrated: false,
 						openAiHeadersMigrated: false,
+						consecutiveMistakeLimitMigrated: false,
 					} // Initialize with default values
 					isDirty = true
 				}
@@ -132,6 +136,12 @@ export class ProviderSettingsManager {
 				if (!providerProfiles.migrations.openAiHeadersMigrated) {
 					await this.migrateOpenAiHeaders(providerProfiles)
 					providerProfiles.migrations.openAiHeadersMigrated = true
+					isDirty = true
+				}
+
+				if (!providerProfiles.migrations.consecutiveMistakeLimitMigrated) {
+					await this.migrateConsecutiveMistakeLimit(providerProfiles)
+					providerProfiles.migrations.consecutiveMistakeLimitMigrated = true
 					isDirty = true
 				}
 
@@ -228,6 +238,18 @@ export class ProviderSettingsManager {
 		}
 	}
 
+	private async migrateConsecutiveMistakeLimit(providerProfiles: ProviderProfiles) {
+		try {
+			for (const [name, apiConfig] of Object.entries(providerProfiles.apiConfigs)) {
+				if (apiConfig.consecutiveMistakeLimit == null) {
+					apiConfig.consecutiveMistakeLimit = DEFAULT_CONSECUTIVE_MISTAKE_LIMIT
+				}
+			}
+		} catch (error) {
+			console.error(`[MigrateConsecutiveMistakeLimit] Failed to migrate consecutive mistake limit:`, error)
+		}
+	}
+
 	/**
 	 * List all available configs with metadata.
 	 */
@@ -263,6 +285,11 @@ export class ProviderSettingsManager {
 				// Filter out settings from other providers.
 				const filteredConfig = providerSettingsSchemaDiscriminated.parse(config)
 				providerProfiles.apiConfigs[name] = { ...filteredConfig, id }
+				console.log("ProviderSettingsManager: Saving config", {
+					name,
+					id,
+					config: providerProfiles.apiConfigs[name],
+				})
 				await this.store(providerProfiles)
 				return id
 			})

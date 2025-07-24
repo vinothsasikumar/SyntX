@@ -60,6 +60,9 @@ const TaskHeader = ({
 
 	const { width: windowWidth } = useWindowSize()
 
+	// Check if using syntx provider
+	const isSyntxProvider = apiConfiguration?.apiProvider === "syntx"
+
 	const condenseButton = (
 		<StandardTooltip content={t("chat:task.condenseContext")}>
 			<button
@@ -109,7 +112,7 @@ const TaskHeader = ({
 					</StandardTooltip>
 				</div>
 				{/* Collapsed state: Track context and cost if we have any */}
-				{!isTaskExpanded && contextWindow > 0 && (
+				{!isTaskExpanded && !isSyntxProvider && contextWindow > 0 && (
 					<div className={`w-full flex flex-row items-center gap-1 h-auto`}>
 						<ContextWindowProgress
 							contextWindow={contextWindow}
@@ -122,7 +125,7 @@ const TaskHeader = ({
 						/>
 						{condenseButton}
 						<ShareButton item={currentTaskItem} disabled={buttonsDisabled} />
-						{!!totalCost && <VSCodeBadge>${totalCost.toFixed(2)}</VSCodeBadge>}
+						{!isSyntxProvider && !!totalCost && <VSCodeBadge>${totalCost.toFixed(2)}</VSCodeBadge>}
 					</div>
 				)}
 				{/* Expanded state: Show task text and images */}
@@ -145,7 +148,7 @@ const TaskHeader = ({
 						{task.images && task.images.length > 0 && <Thumbnails images={task.images} />}
 
 						<div className="flex flex-col gap-1">
-							{isTaskExpanded && contextWindow > 0 && (
+							{isTaskExpanded && !isSyntxProvider && contextWindow > 0 && (
 								<div
 									className={`w-full flex ${windowWidth < 400 ? "flex-col" : "flex-row"} gap-1 h-auto`}>
 									<div className="flex items-center gap-1 flex-shrink-0">
@@ -169,24 +172,28 @@ const TaskHeader = ({
 									{condenseButton}
 								</div>
 							)}
-							<div className="flex justify-between items-center h-[20px]">
-								<div className="flex items-center gap-1 flex-wrap">
-									<span className="font-bold">{t("chat:task.tokens")}</span>
-									{typeof tokensIn === "number" && tokensIn > 0 && (
-										<span className="flex items-center gap-0.5">
-											<i className="codicon codicon-arrow-up text-xs font-bold" />
-											{formatLargeNumber(tokensIn)}
-										</span>
-									)}
-									{typeof tokensOut === "number" && tokensOut > 0 && (
-										<span className="flex items-center gap-0.5">
-											<i className="codicon codicon-arrow-down text-xs font-bold" />
-											{formatLargeNumber(tokensOut)}
-										</span>
+							{!isSyntxProvider && (
+								<div className="flex justify-between items-center h-[20px]">
+									<div className="flex items-center gap-1 flex-wrap">
+										<span className="font-bold">{t("chat:task.tokens")}</span>
+										{typeof tokensIn === "number" && tokensIn > 0 && (
+											<span className="flex items-center gap-0.5">
+												<i className="codicon codicon-arrow-up text-xs font-bold" />
+												{formatLargeNumber(tokensIn)}
+											</span>
+										)}
+										{typeof tokensOut === "number" && tokensOut > 0 && (
+											<span className="flex items-center gap-0.5">
+												<i className="codicon codicon-arrow-down text-xs font-bold" />
+												{formatLargeNumber(tokensOut)}
+											</span>
+										)}
+									</div>
+									{!totalCost && (
+										<TaskActions item={currentTaskItem} buttonsDisabled={buttonsDisabled} />
 									)}
 								</div>
-								{!totalCost && <TaskActions item={currentTaskItem} buttonsDisabled={buttonsDisabled} />}
-							</div>
+							)}
 
 							{((typeof cacheReads === "number" && cacheReads > 0) ||
 								(typeof cacheWrites === "number" && cacheWrites > 0)) && (
@@ -207,12 +214,19 @@ const TaskHeader = ({
 								</div>
 							)}
 
-							{!!totalCost && (
+							{!isSyntxProvider && !!totalCost && (
 								<div className="flex justify-between items-center h-[20px]">
 									<div className="flex items-center gap-1">
 										<span className="font-bold">{t("chat:task.apiCost")}</span>
 										<span>${totalCost?.toFixed(2)}</span>
 									</div>
+									<TaskActions item={currentTaskItem} buttonsDisabled={buttonsDisabled} />
+								</div>
+							)}
+
+							{/* TaskActions for SyntX provider when tokens/cost are hidden */}
+							{isSyntxProvider && (
+								<div className="flex justify-end items-center h-[20px]">
 									<TaskActions item={currentTaskItem} buttonsDisabled={buttonsDisabled} />
 								</div>
 							)}

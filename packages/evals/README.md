@@ -1,4 +1,4 @@
-# Run Roo Code Evals
+# Run Syntx Evals
 
 ### Prerequisites
 
@@ -8,7 +8,7 @@
 
 ### Setup
 
-Clone the Roo Code repo:
+Clone the Syntx repo:
 
 ```sh
 git clone https://github.com/RooCodeInc/Roo-Code.git
@@ -37,7 +37,7 @@ Additionally, you'll find in Docker Desktop that database and redis services are
 
 Navigate to [localhost:3446](http://localhost:3446/) in your browser and click the 🚀 button.
 
-By default a evals run will run all programming exercises in [Roo Code Evals](https://github.com/RooCodeInc/Roo-Code-Evals) repository with the Claude Sonnet 4 model and default settings. For basic configuration you can specify the LLM to use and any subset of the exercises you'd like. For advanced configuration you can import a Roo Code settings file which will allow you to run the evals with Roo Code configured any way you'd like (this includes custom modes, a footgun prompt, etc).
+By default a evals run will run all programming exercises in [Syntx Evals](https://github.com/RooCodeInc/Roo-Code-Evals) repository with the Claude Sonnet 4 model and default settings. For basic configuration you can specify the LLM to use and any subset of the exercises you'd like. For advanced configuration you can import a Syntx settings file which will allow you to run the evals with Syntx configured any way you'd like (this includes custom modes, a footgun prompt, etc).
 
 <img width="1053" src="https://github.com/user-attachments/assets/2367eef4-6ae9-4ac2-8ee4-80f981046486" />
 
@@ -87,7 +87,47 @@ The setup script does the following:
 - Clones/updates the evals repository
 - Creates and migrates a Postgres database
 - Prompts for an OpenRouter API key to add to `.env.local`
-- Optionally builds and installs the Roo Code extension from source
+- Optionally builds and installs the Syntx extension from source
+
+## Port Configuration
+
+By default, the evals system uses the following ports:
+
+- **PostgreSQL**: 5433 (external) → 5432 (internal)
+- **Redis**: 6380 (external) → 6379 (internal)
+- **Web Service**: 3446 (external) → 3000 (internal)
+
+These ports are configured to avoid conflicts with other services that might be running on the standard PostgreSQL (5432) and Redis (6379) ports.
+
+### Customizing Ports
+
+If you need to use different ports, you can customize them by creating a `.env.local` file in the `packages/evals/` directory:
+
+```sh
+# Copy the example file and customize as needed
+cp packages/evals/.env.local.example packages/evals/.env.local
+```
+
+Then edit `.env.local` to set your preferred ports:
+
+```sh
+# Custom port configuration
+EVALS_DB_PORT=5434
+EVALS_REDIS_PORT=6381
+EVALS_WEB_PORT=3447
+
+# Optional: Override database URL if needed
+DATABASE_URL=postgres://postgres:password@localhost:5434/evals_development
+```
+
+### Port Conflict Resolution
+
+If you encounter port conflicts when running `pnpm evals`, you have several options:
+
+1. **Use the default configuration** (recommended): The system now uses non-standard ports by default
+2. **Stop conflicting services**: Temporarily stop other PostgreSQL/Redis services
+3. **Customize ports**: Use the `.env.local` file to set different ports
+4. **Use Docker networks**: Run services in isolated Docker networks
 
 ## Troubleshooting
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useMemo } from "react"
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { useEvent } from "react-use"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -14,18 +14,46 @@ import ChatView, { ChatViewRef } from "./components/chat/ChatView"
 import HistoryView from "./components/history/HistoryView"
 import SettingsView, { SettingsViewRef } from "./components/settings/SettingsView"
 import WelcomeView from "./components/welcome/WelcomeView"
+import GetStartedView from "./components/welcome/GetStartedView"
 import McpView from "./components/mcp/McpView"
 import { MarketplaceView } from "./components/marketplace/MarketplaceView"
 import ModesView from "./components/modes/ModesView"
 import { HumanRelayDialog } from "./components/human-relay/HumanRelayDialog"
-import { AccountView } from "./components/account/AccountView"
+import { DeleteMessageDialog, EditMessageDialog } from "./components/chat/MessageModificationConfirmationDialog"
+//import { AccountView } from "./components/account/AccountView"
 import { useAddNonInteractiveClickListener } from "./components/ui/hooks/useNonInteractiveClick"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { STANDARD_TOOLTIP_DELAY } from "./components/ui/standard-tooltip"
+import AgentView from "./components/agent/AgentView"
+import ProfileSettings from "./components/settings/ProfileSettings"
 
-type Tab = "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account"
+type Tab = "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account" | "agent"
+
+interface HumanRelayDialogState {
+	isOpen: boolean
+	requestId: string
+	promptText: string
+}
+
+interface DeleteMessageDialogState {
+	isOpen: boolean
+	messageTs: number
+}
+
+interface EditMessageDialogState {
+	isOpen: boolean
+	messageTs: number
+	text: string
+	images?: string[]
+}
+
+// Memoize dialog components to prevent unnecessary re-renders
+const MemoizedDeleteMessageDialog = React.memo(DeleteMessageDialog)
+const MemoizedEditMessageDialog = React.memo(EditMessageDialog)
+const MemoizedHumanRelayDialog = React.memo(HumanRelayDialog)
 
 const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]>, Tab>> = {
+	agentButtonClicked: "agent",
 	chatButtonClicked: "chat",
 	settingsButtonClicked: "settings",
 	promptsButtonClicked: "modes",
@@ -43,11 +71,9 @@ const App = () => {
 		telemetrySetting,
 		telemetryKey,
 		machineId,
-		cloudUserInfo,
-		cloudIsAuthenticated,
-		cloudApiUrl,
 		renderContext,
 		mdmCompliant,
+		websiteNotAuthenticated,
 	} = useExtensionState()
 
 	// Create a persistent state manager
@@ -56,14 +82,22 @@ const App = () => {
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [tab, setTab] = useState<Tab>("chat")
 
-	const [humanRelayDialogState, setHumanRelayDialogState] = useState<{
-		isOpen: boolean
-		requestId: string
-		promptText: string
-	}>({
+	const [humanRelayDialogState, setHumanRelayDialogState] = useState<HumanRelayDialogState>({
 		isOpen: false,
 		requestId: "",
 		promptText: "",
+	})
+
+	const [deleteMessageDialogState, setDeleteMessageDialogState] = useState<DeleteMessageDialogState>({
+		isOpen: false,
+		messageTs: 0,
+	})
+
+	const [editMessageDialogState, setEditMessageDialogState] = useState<EditMessageDialogState>({
+		isOpen: false,
+		messageTs: 0,
+		text: "",
+		images: [],
 	})
 
 	const settingsRef = useRef<SettingsViewRef>(null)
@@ -121,6 +155,19 @@ const App = () => {
 				setHumanRelayDialogState({ isOpen: true, requestId, promptText })
 			}
 
+			if (message.type === "showDeleteMessageDialog" && message.messageTs) {
+				setDeleteMessageDialogState({ isOpen: true, messageTs: message.messageTs })
+			}
+
+			if (message.type === "showEditMessageDialog" && message.messageTs && message.text) {
+				setEditMessageDialogState({
+					isOpen: true,
+					messageTs: message.messageTs,
+					text: message.text,
+					images: message.images || [],
+				})
+			}
+
 			if (message.type === "acceptInput") {
 				chatViewRef.current?.acceptInput()
 			}
@@ -168,10 +215,13 @@ const App = () => {
 
 	// Do not conditionally load ChatView, it's expensive and there's state we
 	// don't want to lose (user input, disableInput, askResponse promise, etc.)
-	return showWelcome ? (
+	return websiteNotAuthenticated ? (
+		<GetStartedView />
+	) : showWelcome ? (
 		<WelcomeView />
 	) : (
 		<>
+			{tab === "agent" && <AgentView onDone={() => switchTab("chat")} />}
 			{tab === "modes" && <ModesView onDone={() => switchTab("chat")} />}
 			{tab === "mcp" && <McpView onDone={() => switchTab("chat")} />}
 			{tab === "history" && <HistoryView onDone={() => switchTab("chat")} />}
@@ -185,27 +235,44 @@ const App = () => {
 					targetTab={currentMarketplaceTab as "mcp" | "mode" | undefined}
 				/>
 			)}
-			{tab === "account" && (
-				<AccountView
-					userInfo={cloudUserInfo}
-					isAuthenticated={cloudIsAuthenticated}
-					cloudApiUrl={cloudApiUrl}
-					onDone={() => switchTab("chat")}
-				/>
-			)}
+			{tab === "account" && <ProfileSettings />}
 			<ChatView
 				ref={chatViewRef}
 				isHidden={tab !== "chat"}
 				showAnnouncement={showAnnouncement}
 				hideAnnouncement={() => setShowAnnouncement(false)}
 			/>
-			<HumanRelayDialog
+			<MemoizedHumanRelayDialog
 				isOpen={humanRelayDialogState.isOpen}
 				requestId={humanRelayDialogState.requestId}
 				promptText={humanRelayDialogState.promptText}
 				onClose={() => setHumanRelayDialogState((prev) => ({ ...prev, isOpen: false }))}
 				onSubmit={(requestId, text) => vscode.postMessage({ type: "humanRelayResponse", requestId, text })}
 				onCancel={(requestId) => vscode.postMessage({ type: "humanRelayCancel", requestId })}
+			/>
+			<MemoizedDeleteMessageDialog
+				open={deleteMessageDialogState.isOpen}
+				onOpenChange={(open) => setDeleteMessageDialogState((prev) => ({ ...prev, isOpen: open }))}
+				onConfirm={() => {
+					vscode.postMessage({
+						type: "deleteMessageConfirm",
+						messageTs: deleteMessageDialogState.messageTs,
+					})
+					setDeleteMessageDialogState((prev) => ({ ...prev, isOpen: false }))
+				}}
+			/>
+			<MemoizedEditMessageDialog
+				open={editMessageDialogState.isOpen}
+				onOpenChange={(open) => setEditMessageDialogState((prev) => ({ ...prev, isOpen: open }))}
+				onConfirm={() => {
+					vscode.postMessage({
+						type: "editMessageConfirm",
+						messageTs: editMessageDialogState.messageTs,
+						text: editMessageDialogState.text,
+						images: editMessageDialogState.images,
+					})
+					setEditMessageDialogState((prev) => ({ ...prev, isOpen: false }))
+				}}
 			/>
 		</>
 	)

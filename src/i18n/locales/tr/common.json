@@ -1,6 +1,6 @@
 {
 	"extension": {
-		"name": "Roo Code",
+		"name": "Syntx",
 		"description": "Düzenleyicinizde tam bir AI geliştirici ekibi."
 	},
 	"number_format": {
@@ -17,12 +17,7 @@
 	"confirmation": {
 		"reset_state": "Uzantıdaki tüm durumları ve gizli depolamayı sıfırlamak istediğinizden emin misiniz? Bu işlem geri alınamaz.",
 		"delete_config_profile": "Bu yapılandırma profilini silmek istediğinizden emin misiniz?",
-		"delete_custom_mode_with_rules": "Bu {scope} modunu silmek istediğinizden emin misiniz?\n\nBu işlem, ilişkili kurallar klasörünü de şu konumdan silecektir:\n{rulesFolderPath}",
-		"delete_message": "Neyi silmek istersiniz?",
-		"delete_just_this_message": "Sadece bu mesajı",
-		"delete_this_and_subsequent": "Bu ve sonraki tüm mesajları",
-		"edit_warning": "Bu mesajı düzenlemek konuşmadaki tüm sonraki mesajları silecektir. Devam etmek istiyor musunuz?",
-		"proceed": "Devam et"
+		"delete_custom_mode_with_rules": "Bu {scope} modunu silmek istediğinizden emin misiniz?\n\nBu işlem, ilişkili kurallar klasörünü de şu konumdan silecektir:\n{rulesFolderPath}"
 	},
 	"errors": {
 		"invalid_data_uri": "Geçersiz veri URI formatı",
@@ -67,6 +62,7 @@
 		"url_page_not_found": "Sayfa bulunamadı. URL'nin doğru olup olmadığını kontrol et.",
 		"url_fetch_failed": "URL içeriği getirme hatası: {{error}}",
 		"url_fetch_error_with_url": "{{url}} için içerik getirme hatası: {{error}}",
+		"command_timeout": "Komut çalıştırma {{seconds}} saniye sonra zaman aşımına uğradı",
 		"share_task_failed": "Görev paylaşılamadı",
 		"share_no_active_task": "Paylaşılacak aktif görev yok",
 		"share_auth_required": "Kimlik doğrulama gerekli. Görevleri paylaşmak için lütfen giriş yapın.",
@@ -126,7 +122,7 @@
 		"enter_valid_path": "Lütfen geçerli bir yol girin"
 	},
 	"input": {
-		"task_prompt": "Roo ne yapsın?",
+		"task_prompt": "SyntX ne yapsın?",
 		"task_placeholder": "Görevini buraya yaz"
 	},
 	"settings": {
@@ -142,8 +138,8 @@
 	},
 	"customModes": {
 		"errors": {
-			"yamlParseError": ".roomodes dosyasının {{line}}. satırında geçersiz YAML. Kontrol et:\n• Doğru girinti (tab değil boşluk kullan)\n• Eşleşen tırnak işaretleri ve parantezler\n• Geçerli YAML sözdizimi",
-			"schemaValidationError": ".roomodes'ta geçersiz özel mod formatı:\n{{issues}}",
+			"yamlParseError": ".syntxmodes dosyasının {{line}}. satırında geçersiz YAML. Kontrol et:\n• Doğru girinti (tab değil boşluk kullan)\n• Eşleşen tırnak işaretleri ve parantezler\n• Geçerli YAML sözdizimi",
+			"schemaValidationError": ".syntxmodes'ta geçersiz özel mod formatı:\n{{issues}}",
 			"invalidFormat": "Geçersiz özel mod formatı. Ayarlarının doğru YAML formatını takip ettiğinden emin ol.",
 			"updateFailed": "Özel mod güncellemesi başarısız: {{error}}",
 			"deleteFailed": "Özel mod silme başarısız: {{error}}",
@@ -158,8 +154,8 @@
 	},
 	"mdm": {
 		"errors": {
-			"cloud_auth_required": "Kuruluşunuz Roo Code Cloud kimlik doğrulaması gerektiriyor. Devam etmek için giriş yapın.",
-			"organization_mismatch": "Kuruluşunuzun Roo Code Cloud hesabıyla kimlik doğrulaması yapmalısınız.",
+			"cloud_auth_required": "",
+			"organization_mismatch": "",
 			"verification_failed": "Kuruluş kimlik doğrulaması doğrulanamıyor."
 		}
 	},
@@ -169,6 +165,11 @@
 			"description": "Bu {{scope}} modunu silmek istediğinizden emin misiniz? Bu, {{rulesFolderPath}} adresindeki ilişkili kurallar klasörünü de silecektir",
 			"descriptionNoRules": "Bu özel modu silmek istediğinizden emin misiniz?",
 			"confirm": "Sil"
+		}
+	},
+	"commands": {
+		"preventCompletionWithOpenTodos": {
+			"description": "Todo listesinde tamamlanmamış todolar olduğunda görev tamamlanmasını engelle"
 		}
 	}
 }

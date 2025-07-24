@@ -3,12 +3,12 @@ import { useDeepCompareEffect, useEvent, useMount } from "react-use"
 import debounce from "debounce"
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"
 import removeMd from "remove-markdown"
-import { Trans } from "react-i18next"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
 import useSound from "use-sound"
 import { LRUCache } from "lru-cache"
 
 import { useDebounceEffect } from "@src/utils/useDebounceEffect"
+import { appendImages } from "@src/utils/imageUtils"
 
 import type { ClineAsk, ClineMessage } from "@roo-code/types"
 
@@ -31,17 +31,14 @@ import {
 	parseCommand,
 } from "@src/utils/command-validation"
 import { useTranslation } from "react-i18next"
-import { buildDocLink } from "@src/utils/docLinks"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useSelectedModel } from "@src/components/ui/hooks/useSelectedModel"
 import RooHero from "@src/components/welcome/RooHero"
-import RooTips from "@src/components/welcome/RooTips"
 import { StandardTooltip } from "@src/components/ui"
+import { useAutoApprovalState } from "@src/hooks/useAutoApprovalState"
+import { useAutoApprovalToggles } from "@src/hooks/useAutoApprovalToggles"
 
-import TelemetryBanner from "../common/TelemetryBanner"
-import VersionIndicator from "../common/VersionIndicator"
-import { useTaskSearch } from "../history/useTaskSearch"
 import HistoryPreview from "../history/HistoryPreview"
 import Announcement from "./Announcement"
 import BrowserSessionRow from "./BrowserSessionRow"
@@ -53,6 +50,7 @@ import SystemPromptWarning from "./SystemPromptWarning"
 import ProfileViolationWarning from "./ProfileViolationWarning"
 import { CheckpointWarning } from "./CheckpointWarning"
 import { getLatestTodo } from "@roo/todo"
+import BoilerplateList, { DEFAULT_BOILERPLATES } from "./BoilerplateList"
 
 export interface ChatViewProps {
 	isHidden: boolean
@@ -79,7 +77,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	})
 	const { t } = useAppTranslation()
 	const { t: tSettings } = useTranslation("settings")
-	const modeShortcutText = `${isMac ? "⌘" : "Ctrl"} + . ${t("chat:forNextMode")}`
+	const modeShortcutText = `${isMac ? "⌘" : "Ctrl"} + . ${t("chat:forNextMode")}, ${isMac ? "⌘" : "Ctrl"} + Shift + . ${t("chat:forPreviousMode")}`
 	const {
 		clineMessages: messages,
 		currentTaskItem,
@@ -107,9 +105,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		alwaysAllowFollowupQuestions,
 		alwaysAllowUpdateTodoList,
 		customModes,
-		telemetrySetting,
 		hasSystemPromptOverride,
-		historyPreviewCollapsed, // Added historyPreviewCollapsed
 		soundEnabled,
 		soundVolume,
 	} = useExtensionState()
@@ -118,20 +114,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	useEffect(() => {
 		messagesRef.current = messages
 	}, [messages])
-
-	const { tasks } = useTaskSearch()
-
-	// Initialize expanded state based on the persisted setting (default to expanded if undefined)
-	const [isExpanded, setIsExpanded] = useState(
-		historyPreviewCollapsed === undefined ? true : !historyPreviewCollapsed,
-	)
-
-	const toggleExpanded = useCallback(() => {
-		const newState = !isExpanded
-		setIsExpanded(newState)
-		// Send message to extension to persist the new collapsed state
-		vscode.postMessage({ type: "setHistoryPreviewCollapsed", bool: !newState })
-	}, [isExpanded])
 
 	// Leaving this less safe version here since if the first message is not a
 	// task, then the extension is in a bad state and needs to be debugged (see
@@ -720,10 +702,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 					}
 					break
 				case "selectedImages":
-					const newImages = message.images ?? []
-					if (newImages.length > 0) {
+					// Only handle selectedImages if it's not for editing context
+					// When context is "edit", ChatRow will handle the images
+					if (message.context !== "edit") {
 						setSelectedImages((prevImages) =>
-							[...prevImages, ...newImages].slice(0, MAX_IMAGES_PER_MESSAGE),
+							appendImages(prevImages, message.images, MAX_IMAGES_PER_MESSAGE),
 						)
 					}
 					break
@@ -959,9 +942,20 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		[deniedCommands],
 	)
 
+	// Create toggles object for useAutoApprovalState hook
+	const autoApprovalToggles = useAutoApprovalToggles()
+
+	const { hasEnabledOptions } = useAutoApprovalState(autoApprovalToggles, autoApprovalEnabled)
+
 	const isAutoApproved = useCallback(
 		(message: ClineMessage | undefined) => {
+			// First check if auto-approval is enabled AND we have at least one permission
 			if (!autoApprovalEnabled || !message || message.type !== "ask") {
+				return false
+			}
+
+			// Use the hook's result instead of duplicating the logic
+			if (!hasEnabledOptions) {
 				return false
 			}
 
@@ -1038,6 +1032,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		},
 		[
 			autoApprovalEnabled,
+			hasEnabledOptions,
 			alwaysAllowBrowser,
 			alwaysAllowReadOnly,
 			alwaysAllowReadOnlyOutsideWorkspace,
@@ -1555,16 +1550,33 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		switchToMode(allModes[nextModeIndex].slug)
 	}, [mode, customModes, switchToMode])
 
+	// Function to handle switching to previous mode
+	const switchToPreviousMode = useCallback(() => {
+		const allModes = getAllModes(customModes)
+		const currentModeIndex = allModes.findIndex((m) => m.slug === mode)
+		const previousModeIndex = (currentModeIndex - 1 + allModes.length) % allModes.length
+		// Update local state and notify extension to sync mode change
+		switchToMode(allModes[previousModeIndex].slug)
+	}, [mode, customModes, switchToMode])
+
 	// Add keyboard event handler
 	const handleKeyDown = useCallback(
 		(event: KeyboardEvent) => {
-			// Check for Command + . (period)
-			if ((event.metaKey || event.ctrlKey) && event.key === ".") {
+			// Check for Command/Ctrl + Period (with or without Shift)
+			// Using event.code for better cross-platform compatibility
+			if ((event.metaKey || event.ctrlKey) && event.code === "Period") {
 				event.preventDefault() // Prevent default browser behavior
-				switchToNextMode()
+
+				if (event.shiftKey) {
+					// Shift + Period = Previous mode
+					switchToPreviousMode()
+				} else {
+					// Just Period = Next mode
+					switchToNextMode()
+				}
 			}
 		},
-		[switchToNextMode],
+		[switchToNextMode, switchToPreviousMode],
 	)
 
 	// Add event listener
@@ -1640,46 +1652,23 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				</>
 			) : (
 				<div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 relative">
-					{/* Moved Task Bar Header Here */}
-					{tasks.length !== 0 && (
-						<div className="flex text-vscode-descriptionForeground w-full mx-auto px-5 pt-3">
-							<div className="flex items-center gap-1 cursor-pointer" onClick={toggleExpanded}>
-								{tasks.length < 10 && (
-									<span className={`font-medium text-xs `}>{t("history:recentTasks")}</span>
-								)}
-								<span
-									className={`codicon  ${isExpanded ? "codicon-eye" : "codicon-eye-closed"} scale-90`}
-								/>
-							</div>
-						</div>
-					)}
-					<div
-						className={` w-full flex flex-col gap-4 m-auto ${isExpanded && tasks.length > 0 ? "mt-0" : ""} px-3.5 min-[370px]:px-10 pt-5 transition-all duration-300`}>
-						{/* Version indicator in top-right corner - only on welcome screen */}
-						<VersionIndicator
-							onClick={() => setShowAnnouncementModal(true)}
-							className="absolute top-2 right-3 z-10"
-						/>
-
+					{/* Absolute top-left logo/username, at same level as version button */}
+					<div className="absolute top-2 left-3 z-10">
 						<RooHero />
-						{telemetrySetting === "unset" && <TelemetryBanner />}
-						<p className="text-vscode-editor-foreground leading-tight font-vscode-font-family text-center text-balance max-w-[380px] mx-auto my-0">
-							<Trans
-								i18nKey="chat:about"
-								components={{
-									DocsLink: (
-										<a href={buildDocLink("", "welcome")} target="_blank" rel="noopener noreferrer">
-											the docs
-										</a>
-									),
+					</div>
+					<div className="w-full flex flex-col gap-4 m-auto px-3.5 min-[370px]:px-10 pt-28 transition-all duration-300">
+						{/* pt-28 ensures content is pushed below the logo/username row */}
+						{/* Show the task history preview if expanded and tasks exist */}
+						{taskHistory.length > 0 && <HistoryPreview />}
+						{/* Show boilerplate list if no task history */}
+						{taskHistory.length === 0 && (
+							<BoilerplateList
+								boilerplates={DEFAULT_BOILERPLATES}
+								onSelect={(boilerplate) => {
+									vscode.postMessage({ type: "newTask", text: boilerplate.initialInput })
 								}}
 							/>
-						</p>
-						<div className="mb-2.5">
-							<RooTips cycle={false} />
-						</div>
-						{/* Show the task history preview if expanded and tasks exist */}
-						{taskHistory.length > 0 && isExpanded && <HistoryPreview />}
+						)}
 					</div>
 				</div>
 			)}

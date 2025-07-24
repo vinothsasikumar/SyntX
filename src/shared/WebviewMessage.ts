@@ -24,6 +24,8 @@ export interface UpdateTodoListPayload {
 
 export interface WebviewMessage {
 	type:
+		| "action"
+		| "agentSelected"
 		| "updateTodoList"
 		| "deleteMultipleTasksWithIds"
 		| "currentApiConfigName"
@@ -107,12 +109,16 @@ export interface WebviewMessage {
 		| "updateMcpTimeout"
 		| "fuzzyMatchThreshold"
 		| "writeDelayMs"
+		| "diagnosticsEnabled"
 		| "enhancePrompt"
 		| "enhancedPrompt"
 		| "draggedImages"
 		| "deleteMessage"
+		| "deleteMessageConfirm"
 		| "submitEditedMessage"
+		| "editMessageConfirm"
 		| "terminalOutputLineLimit"
+		| "terminalOutputCharacterLimit"
 		| "terminalShellIntegrationTimeout"
 		| "terminalShellIntegrationDisabled"
 		| "terminalCommandDelay"
@@ -165,6 +171,8 @@ export interface WebviewMessage {
 		| "accountButtonClicked"
 		| "rooCloudSignIn"
 		| "rooCloudSignOut"
+		| "initiateWebsiteAuth"
+		| "signOutWebsite"
 		| "condenseTaskContextRequest"
 		| "requestIndexingStatus"
 		| "startIndexing"
@@ -198,11 +206,26 @@ export interface WebviewMessage {
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account"
 	disabled?: boolean
+	context?: string
 	dataUri?: string
 	askResponse?: ClineAskResponse
 	apiConfiguration?: ProviderSettings
 	images?: string[]
 	bool?: boolean
+	agentId?: string
+	showModes?: boolean
+	action?:
+		| "agentButtonClicked"
+		| "chatButtonClicked"
+		| "mcpButtonClicked"
+		| "settingsButtonClicked"
+		| "historyButtonClicked"
+		| "promptsButtonClicked"
+		| "marketplaceButtonClicked"
+		| "accountButtonClicked"
+		| "didBecomeVisible"
+		| "focusInput"
+		| "switchTab"
 	value?: number
 	commands?: string[]
 	audioType?: AudioType
@@ -226,6 +249,7 @@ export interface WebviewMessage {
 	ids?: string[]
 	hasSystemPromptOverride?: boolean
 	terminalOperation?: "continue" | "abort"
+	messageTs?: number
 	historyPreviewCollapsed?: boolean
 	filters?: { type?: string; search?: string; tags?: string[] }
 	url?: string // For openExternal
@@ -239,7 +263,7 @@ export interface WebviewMessage {
 		// Global state settings
 		codebaseIndexEnabled: boolean
 		codebaseIndexQdrantUrl: string
-		codebaseIndexEmbedderProvider: "openai" | "ollama" | "openai-compatible" | "gemini"
+		codebaseIndexEmbedderProvider: "openai" | "ollama" | "openai-compatible" | "gemini" | "mistral"
 		codebaseIndexEmbedderBaseUrl?: string
 		codebaseIndexEmbedderModelId: string
 		codebaseIndexEmbedderModelDimension?: number // Generic dimension for all providers
@@ -252,6 +276,7 @@ export interface WebviewMessage {
 		codeIndexQdrantApiKey?: string
 		codebaseIndexOpenAiCompatibleApiKey?: string
 		codebaseIndexGeminiApiKey?: string
+		codebaseIndexMistralApiKey?: string
 	}
 }
 

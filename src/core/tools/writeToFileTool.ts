@@ -13,6 +13,7 @@ import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { detectCodeOmission } from "../../integrations/editor/detect-omission"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
+import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 export async function writeToFileTool(
 	cline: Task,
@@ -132,7 +133,7 @@ export async function writeToFileTool(
 				// Use more specific error message for line_count that provides guidance based on the situation
 				await cline.say(
 					"error",
-					`Roo tried to use write_to_file${
+					`SyntX tried to use write_to_file${
 						relPath ? ` for '${relPath.toPosix()}'` : ""
 					} but the required parameter 'line_count' was missing or truncated after ${actualLineCount} lines of content were written. Retrying...`,
 				)
@@ -213,7 +214,11 @@ export async function writeToFileTool(
 			}
 
 			// Call saveChanges to update the DiffViewProvider properties
-			await cline.diffViewProvider.saveChanges()
+			const provider = cline.providerRef.deref()
+			const state = await provider?.getState()
+			const diagnosticsEnabled = state?.diagnosticsEnabled ?? true
+			const writeDelayMs = state?.writeDelayMs ?? DEFAULT_WRITE_DELAY_MS
+			await cline.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
 
 			// Track file edit operation
 			if (relPath) {

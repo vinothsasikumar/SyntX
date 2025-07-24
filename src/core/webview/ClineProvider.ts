@@ -28,6 +28,7 @@ import {
 	openRouterDefaultModelId,
 	glamaDefaultModelId,
 	ORGANIZATION_ALLOW_ALL,
+	DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 } from "@roo-code/types"
 import { TelemetryService } from "@roo-code/telemetry"
 import { CloudService, getRooCodeApiUrl } from "@roo-code/cloud"
@@ -42,6 +43,7 @@ import { ExtensionMessage, MarketplaceInstalledMetadata } from "../../shared/Ext
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { experimentDefault, experiments, EXPERIMENT_IDS } from "../../shared/experiments"
 import { formatLanguage } from "../../shared/language"
+import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 import { Terminal } from "../../integrations/terminal/Terminal"
 import { downloadTask } from "../../integrations/misc/export-markdown"
 import { getTheme } from "../../integrations/theme/getTheme"
@@ -553,6 +555,7 @@ export class ClineProvider
 			enableDiff,
 			enableCheckpoints,
 			fuzzyMatchThreshold,
+			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			task,
 			images,
 			experiments,
@@ -589,6 +592,7 @@ export class ClineProvider
 			enableDiff,
 			enableCheckpoints,
 			fuzzyMatchThreshold,
+			consecutiveMistakeLimit: apiConfiguration.consecutiveMistakeLimit,
 			historyItem,
 			experiments,
 			rootTask: historyItem.rootTask,
@@ -695,7 +699,7 @@ export class ClineProvider
 						window.AUDIO_BASE_URI = "${audioUri}"
 						window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 					</script>
-					<title>Roo Code</title>
+					<title>Syntx</title>
 				</head>
 				<body>
 					<div id="root"></div>
@@ -768,7 +772,7 @@ export class ClineProvider
 				window.AUDIO_BASE_URI = "${audioUri}"
 				window.MATERIAL_ICONS_BASE_URI = "${materialIconsUri}"
 			</script>
-            <title>Roo Code</title>
+            <title>Syntx</title>
           </head>
           <body>
             <noscript>You need to enable JavaScript to run this app.</noscript>
@@ -1013,21 +1017,21 @@ export class ClineProvider
 		// Get platform-specific application data directory
 		let mcpServersDir: string
 		if (process.platform === "win32") {
-			// Windows: %APPDATA%\Roo-Code\MCP
-			mcpServersDir = path.join(os.homedir(), "AppData", "Roaming", "Roo-Code", "MCP")
+			// Windows: %APPDATA%\SyntX\MCP
+			mcpServersDir = path.join(os.homedir(), "AppData", "Roaming", "SyntX", "MCP")
 		} else if (process.platform === "darwin") {
-			// macOS: ~/Documents/Cline/MCP
-			mcpServersDir = path.join(os.homedir(), "Documents", "Cline", "MCP")
+			// macOS: ~/Documents/SyntX/MCP
+			mcpServersDir = path.join(os.homedir(), "Documents", "SyntX", "MCP")
 		} else {
-			// Linux: ~/.local/share/Cline/MCP
-			mcpServersDir = path.join(os.homedir(), ".local", "share", "Roo-Code", "MCP")
+			// Linux: ~/.local/share/SyntX/MCP
+			mcpServersDir = path.join(os.homedir(), ".local", "share", "SyntX", "MCP")
 		}
 
 		try {
 			await fs.mkdir(mcpServersDir, { recursive: true })
 		} catch (error) {
 			// Fallback to a relative path if directory creation fails
-			return path.join(os.homedir(), ".roo-code", "mcp")
+			return path.join(os.homedir(), ".syntx", "mcp")
 		}
 		return mcpServersDir
 	}
@@ -1241,12 +1245,13 @@ export class ClineProvider
 		await this.postStateToWebview()
 	}
 
-	async postStateToWebview() {
+	async postStateToWebview(skipMdmRedirect: boolean = false) {
 		const state = await this.getStateToPostToWebview()
 		this.postMessageToWebview({ type: "state", state })
 
 		// Check MDM compliance and send user to account tab if not compliant
-		if (!this.checkMdmCompliance()) {
+		// Skip redirect if we're in the middle of authentication flow
+		if (!skipMdmRedirect && !this.checkMdmCompliance()) {
 			await this.postMessageToWebview({ type: "action", action: "accountButtonClicked" })
 		}
 	}
@@ -1390,6 +1395,7 @@ export class ClineProvider
 			cachedChromeHostUrl,
 			writeDelayMs,
 			terminalOutputLineLimit,
+			terminalOutputCharacterLimit,
 			terminalShellIntegrationTimeout,
 			terminalShellIntegrationDisabled,
 			terminalCommandDelay,
@@ -1434,6 +1440,7 @@ export class ClineProvider
 			profileThresholds,
 			alwaysAllowFollowupQuestions,
 			followupAutoApproveTimeoutMs,
+			diagnosticsEnabled,
 		} = await this.getState()
 
 		const telemetryKey = process.env.POSTHOG_API_KEY
@@ -1487,8 +1494,9 @@ export class ClineProvider
 			remoteBrowserHost,
 			remoteBrowserEnabled: remoteBrowserEnabled ?? false,
 			cachedChromeHostUrl: cachedChromeHostUrl,
-			writeDelayMs: writeDelayMs ?? 1000,
+			writeDelayMs: writeDelayMs ?? DEFAULT_WRITE_DELAY_MS,
 			terminalOutputLineLimit: terminalOutputLineLimit ?? 500,
+			terminalOutputCharacterLimit: terminalOutputCharacterLimit ?? DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 			terminalShellIntegrationTimeout: terminalShellIntegrationTimeout ?? Terminal.defaultShellIntegrationTimeout,
 			terminalShellIntegrationDisabled: terminalShellIntegrationDisabled ?? false,
 			terminalCommandDelay: terminalCommandDelay ?? 0,
@@ -1542,6 +1550,10 @@ export class ClineProvider
 				codebaseIndexEmbedderProvider: codebaseIndexConfig?.codebaseIndexEmbedderProvider ?? "openai",
 				codebaseIndexEmbedderBaseUrl: codebaseIndexConfig?.codebaseIndexEmbedderBaseUrl ?? "",
 				codebaseIndexEmbedderModelId: codebaseIndexConfig?.codebaseIndexEmbedderModelId ?? "",
+				codebaseIndexEmbedderModelDimension: codebaseIndexConfig?.codebaseIndexEmbedderModelDimension ?? 1536,
+				codebaseIndexOpenAiCompatibleBaseUrl: codebaseIndexConfig?.codebaseIndexOpenAiCompatibleBaseUrl,
+				codebaseIndexSearchMaxResults: codebaseIndexConfig?.codebaseIndexSearchMaxResults,
+				codebaseIndexSearchMinScore: codebaseIndexConfig?.codebaseIndexSearchMinScore,
 			},
 			mdmCompliant: this.checkMdmCompliance(),
 			profileThresholds: profileThresholds ?? {},
@@ -1549,6 +1561,7 @@ export class ClineProvider
 			hasOpenedModeSelector: this.getGlobalState("hasOpenedModeSelector") ?? false,
 			alwaysAllowFollowupQuestions: alwaysAllowFollowupQuestions ?? false,
 			followupAutoApproveTimeoutMs: followupAutoApproveTimeoutMs ?? 60000,
+			diagnosticsEnabled: diagnosticsEnabled ?? true,
 		}
 	}
 
@@ -1563,7 +1576,7 @@ export class ClineProvider
 		const customModes = await this.customModesManager.getCustomModes()
 
 		// Determine apiProvider with the same logic as before.
-		const apiProvider: ProviderName = stateValues.apiProvider ? stateValues.apiProvider : "anthropic"
+		const apiProvider: ProviderName = stateValues.apiProvider ? stateValues.apiProvider : "syntx"
 
 		// Build the apiConfiguration object combining state values and secrets.
 		const providerSettings = this.contextProxy.getProviderSettings()
@@ -1632,6 +1645,7 @@ export class ClineProvider
 			alwaysAllowFollowupQuestions: stateValues.alwaysAllowFollowupQuestions ?? false,
 			alwaysAllowUpdateTodoList: stateValues.alwaysAllowUpdateTodoList ?? false,
 			followupAutoApproveTimeoutMs: stateValues.followupAutoApproveTimeoutMs ?? 60000,
+			diagnosticsEnabled: stateValues.diagnosticsEnabled ?? true,
 			allowedMaxRequests: stateValues.allowedMaxRequests,
 			autoCondenseContext: stateValues.autoCondenseContext ?? true,
 			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 100,
@@ -1650,8 +1664,10 @@ export class ClineProvider
 			remoteBrowserEnabled: stateValues.remoteBrowserEnabled ?? false,
 			cachedChromeHostUrl: stateValues.cachedChromeHostUrl as string | undefined,
 			fuzzyMatchThreshold: stateValues.fuzzyMatchThreshold ?? 1.0,
-			writeDelayMs: stateValues.writeDelayMs ?? 1000,
+			writeDelayMs: stateValues.writeDelayMs ?? DEFAULT_WRITE_DELAY_MS,
 			terminalOutputLineLimit: stateValues.terminalOutputLineLimit ?? 500,
+			terminalOutputCharacterLimit:
+				stateValues.terminalOutputCharacterLimit ?? DEFAULT_TERMINAL_OUTPUT_CHARACTER_LIMIT,
 			terminalShellIntegrationTimeout:
 				stateValues.terminalShellIntegrationTimeout ?? Terminal.defaultShellIntegrationTimeout,
 			terminalShellIntegrationDisabled: stateValues.terminalShellIntegrationDisabled ?? false,
@@ -1682,7 +1698,7 @@ export class ClineProvider
 			maxWorkspaceFiles: stateValues.maxWorkspaceFiles ?? 200,
 			openRouterUseMiddleOutTransform: stateValues.openRouterUseMiddleOutTransform ?? true,
 			browserToolEnabled: stateValues.browserToolEnabled ?? true,
-			telemetrySetting: stateValues.telemetrySetting || "unset",
+			telemetrySetting: stateValues.telemetrySetting || "enabled",
 			showRooIgnoredFiles: stateValues.showRooIgnoredFiles ?? true,
 			maxReadFileLine: stateValues.maxReadFileLine ?? -1,
 			maxConcurrentFileReads: stateValues.maxConcurrentFileReads ?? 5,
@@ -1703,6 +1719,12 @@ export class ClineProvider
 					stateValues.codebaseIndexConfig?.codebaseIndexEmbedderProvider ?? "openai",
 				codebaseIndexEmbedderBaseUrl: stateValues.codebaseIndexConfig?.codebaseIndexEmbedderBaseUrl ?? "",
 				codebaseIndexEmbedderModelId: stateValues.codebaseIndexConfig?.codebaseIndexEmbedderModelId ?? "",
+				codebaseIndexEmbedderModelDimension:
+					stateValues.codebaseIndexConfig?.codebaseIndexEmbedderModelDimension,
+				codebaseIndexOpenAiCompatibleBaseUrl:
+					stateValues.codebaseIndexConfig?.codebaseIndexOpenAiCompatibleBaseUrl,
+				codebaseIndexSearchMaxResults: stateValues.codebaseIndexConfig?.codebaseIndexSearchMaxResults,
+				codebaseIndexSearchMinScore: stateValues.codebaseIndexConfig?.codebaseIndexSearchMinScore,
 			},
 			profileThresholds: stateValues.profileThresholds ?? {},
 		}
@@ -1773,8 +1795,17 @@ export class ClineProvider
 		await this.providerSettingsManager.resetAllConfigs()
 		await this.customModesManager.resetCustomModes()
 		await this.removeClineFromStack()
+
+		// Clear website authentication to show get started screen
+		await this.contextProxy.setValue("websiteUsername", undefined)
+		await this.contextProxy.setValue("syntxApiKey", undefined)
+
 		await this.postStateToWebview()
-		await this.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+		// Navigate to get started screen by sending websiteAuth message
+		await this.postMessageToWebview({
+			type: "websiteAuth",
+			text: JSON.stringify({ authenticated: false, username: undefined, apiKey: undefined }),
+		})
 	}
 
 	// logging
@@ -1828,7 +1859,7 @@ export class ClineProvider
 
 		const packageJSON = this.context.extension?.packageJSON
 
-		// Get Roo Code Cloud authentication state
+		// Get Syntx Cloud authentication state
 		let cloudIsAuthenticated: boolean | undefined
 
 		try {
@@ -1842,6 +1873,19 @@ export class ClineProvider
 
 		// Get git repository information
 		const gitInfo = await getWorkspaceGitInfo()
+
+		// Calculate todo list statistics
+		const todoList = task?.todoList
+		let todos: { total: number; completed: number; inProgress: number; pending: number } | undefined
+
+		if (todoList && todoList.length > 0) {
+			todos = {
+				total: todoList.length,
+				completed: todoList.filter((todo) => todo.status === "completed").length,
+				inProgress: todoList.filter((todo) => todo.status === "in_progress").length,
+				pending: todoList.filter((todo) => todo.status === "pending").length,
+			}
+		}
 
 		// Return all properties including git info - clients will filter as needed
 		return {
@@ -1857,7 +1901,115 @@ export class ClineProvider
 			diffStrategy: task?.diffStrategy?.getName(),
 			isSubtask: task ? !!task.parentTask : undefined,
 			cloudIsAuthenticated,
+			...(todos && { todos }),
 			...gitInfo,
+		}
+	}
+
+	// Website Authentication
+
+	async initiateWebsiteAuth() {
+		const packageJSON = this.contextProxy.extension?.packageJSON
+		const publisher = packageJSON?.publisher ?? "OrangecatTechPvtLtd"
+		const name = packageJSON?.name ?? "syntx"
+		const callbackUri = `vscode://${publisher}.${name}/website/callback`
+
+		const authUrl = `https://syntx.dev/login?redirect_uri=${encodeURIComponent(callbackUri)}`
+
+		await vscode.env.openExternal(vscode.Uri.parse(authUrl))
+	}
+
+	async handleWebsiteAuthCallback(username: string, apiKey: string) {
+		if (!username || !apiKey) {
+			throw new Error("Missing username or API key in website authentication callback")
+		}
+
+		this.log(
+			"[DEBUG] Website auth callback started - username: " + username + ", apiKey: " + (apiKey ? "***" : "null"),
+		)
+
+		// Store credentials in global state
+		await this.contextProxy.setValue("websiteUsername", username)
+		await this.contextProxy.setValue("syntxApiKey", apiKey)
+
+		// Always show demo after successful authentication
+		this.log("[DEBUG] Triggering demo window after successful authentication")
+		await this.openDemoWindow()
+
+		// Send authentication success message to webview
+		await this.postMessageToWebview({
+			type: "websiteAuth",
+			text: JSON.stringify({ authenticated: true, username, apiKey }),
+		})
+
+		// Ensure we navigate to chat view after authentication, not settings
+		await this.postMessageToWebview({
+			type: "action",
+			action: "chatButtonClicked",
+		})
+
+		await this.postStateToWebview(true) // Skip MDM redirect during auth flow
+
+		vscode.window.showInformationMessage("Successfully authenticated with SyntX website")
+
+		// Ensure provider profile is set to syntx after website login
+		const { apiConfiguration, currentApiConfigName } = await this.getState()
+		const newConfiguration = {
+			...apiConfiguration,
+			apiProvider: "syntx" as const,
+			syntxApiKey: apiKey,
+		}
+		await this.upsertProviderProfile(currentApiConfigName, newConfiguration)
+	}
+
+	async signOutWebsite() {
+		// Clear stored credentials
+		await this.contextProxy.setValue("websiteUsername", undefined)
+		await this.contextProxy.setValue("syntxApiKey", undefined)
+
+		// Send sign out message to webview
+		await this.postMessageToWebview({
+			type: "websiteAuth",
+			text: JSON.stringify({ authenticated: false, username: undefined, apiKey: undefined }),
+		})
+
+		vscode.window.showInformationMessage("Successfully signed out from SyntX website")
+	}
+
+	async openDemoWindow() {
+		try {
+			this.log("[DEBUG] openDemoWindow called - starting demo window opening process")
+
+			// Get the path to the demo.md file
+			const extensionPath = this.context.extensionPath
+			// Since extensionPath points to src, we need to go up and then into webview-ui
+			const demoPath = vscode.Uri.file(path.join(extensionPath, "..", "webview-ui", "public", "demo.md"))
+
+			this.log(
+				"[DEBUG] Demo file path constructed - extensionPath: " +
+					extensionPath +
+					", demoPath: " +
+					demoPath.fsPath,
+			)
+
+			// Check if file exists
+			try {
+				await vscode.workspace.fs.stat(demoPath)
+				this.log("[DEBUG] Demo file exists, proceeding to open")
+			} catch (error) {
+				this.log("[DEBUG] Demo file does not exist - error: " + error)
+				throw new Error(`Demo file not found at ${demoPath.fsPath}`)
+			}
+
+			// Open the demo.md file in markdown preview mode on the right side
+			this.log("[DEBUG] Opening markdown preview...")
+			await vscode.commands.executeCommand("markdown.showPreviewToSide", demoPath)
+
+			this.log("[DEBUG] Demo window opened successfully in preview mode")
+		} catch (error) {
+			this.log("[DEBUG] Error opening demo file: " + error)
+			// Fallback: show a simple information message if file opening fails
+			vscode.window.showInformationMessage("Welcome to SyntX! Check out the demo content in the chat.")
 		}
 	}
 }

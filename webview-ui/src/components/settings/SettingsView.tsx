@@ -79,6 +79,7 @@ export interface SettingsViewRef {
 }
 
 const sectionNames = [
+	// "profile", // Removed profile section
 	"providers",
 	"autoApprove",
 	"browser",
@@ -120,6 +121,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 	const [cachedState, setCachedState] = useState(extensionState)
 
 	const {
+		autoApprovalEnabled,
 		alwaysAllowReadOnly,
 		alwaysAllowReadOnlyOutsideWorkspace,
 		allowedCommands,
@@ -155,6 +157,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 		soundVolume,
 		telemetrySetting,
 		terminalOutputLineLimit,
+		terminalOutputCharacterLimit,
 		terminalShellIntegrationTimeout,
 		terminalShellIntegrationDisabled, // Added from upstream
 		terminalCommandDelay,
@@ -218,7 +221,15 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					return prevState
 				}
 
-				setChangeDetected(true)
+				const previousValue = prevState.apiConfiguration?.[field]
+
+				// Don't treat initial sync from undefined to a defined value as a user change
+				// This prevents the dirty state when the component initializes and auto-syncs the model ID
+				const isInitialSync = previousValue === undefined && value !== undefined
+
+				if (!isInitialSync) {
+					setChangeDetected(true)
+				}
 				return { ...prevState, apiConfiguration: { ...prevState.apiConfiguration, [field]: value } }
 			})
 		},
@@ -263,6 +274,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 	const handleSubmit = () => {
 		if (isSettingValid) {
 			vscode.postMessage({ type: "language", text: language })
+			vscode.postMessage({ type: "autoApprovalEnabled", bool: autoApprovalEnabled })
 			vscode.postMessage({ type: "alwaysAllowReadOnly", bool: alwaysAllowReadOnly })
 			vscode.postMessage({
 				type: "alwaysAllowReadOnlyOutsideWorkspace",
@@ -293,6 +305,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 			vscode.postMessage({ type: "writeDelayMs", value: writeDelayMs })
 			vscode.postMessage({ type: "screenshotQuality", value: screenshotQuality ?? 75 })
 			vscode.postMessage({ type: "terminalOutputLineLimit", value: terminalOutputLineLimit ?? 500 })
+			vscode.postMessage({ type: "terminalOutputCharacterLimit", value: terminalOutputCharacterLimit ?? 50000 })
 			vscode.postMessage({ type: "terminalShellIntegrationTimeout", value: terminalShellIntegrationTimeout })
 			vscode.postMessage({ type: "terminalShellIntegrationDisabled", bool: terminalShellIntegrationDisabled })
 			vscode.postMessage({ type: "terminalCommandDelay", value: terminalCommandDelay })
@@ -392,6 +405,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 
 	const sections: { id: SectionName; icon: LucideIcon }[] = useMemo(
 		() => [
+			// { id: "profile", icon: User }, // Removed profile section
 			{ id: "providers", icon: Webhook },
 			{ id: "autoApprove", icon: CheckCheck },
 			{ id: "browser", icon: SquareMousePointer },
@@ -591,6 +605,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					{/* Auto-Approve Section */}
 					{activeTab === "autoApprove" && (
 						<AutoApproveSettings
+							autoApprovalEnabled={autoApprovalEnabled}
 							alwaysAllowReadOnly={alwaysAllowReadOnly}
 							alwaysAllowReadOnlyOutsideWorkspace={alwaysAllowReadOnlyOutsideWorkspace}
 							alwaysAllowWrite={alwaysAllowWrite}
@@ -649,8 +664,6 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 						<ContextManagementSettings
 							autoCondenseContext={autoCondenseContext}
 							autoCondenseContextPercent={autoCondenseContextPercent}
-							condensingApiConfigId={condensingApiConfigId}
-							customCondensingPrompt={customCondensingPrompt}
 							listApiConfigMeta={listApiConfigMeta ?? []}
 							maxOpenTabsContext={maxOpenTabsContext}
 							maxWorkspaceFiles={maxWorkspaceFiles ?? 200}
@@ -666,6 +679,7 @@ const SettingsView = forwardRef<SettingsViewRef, SettingsViewProps>(({ onDone, t
 					{activeTab === "terminal" && (
 						<TerminalSettings
 							terminalOutputLineLimit={terminalOutputLineLimit}
+							terminalOutputCharacterLimit={terminalOutputCharacterLimit}
 							terminalShellIntegrationTimeout={terminalShellIntegrationTimeout}
 							terminalShellIntegrationDisabled={terminalShellIntegrationDisabled}
 							terminalCommandDelay={terminalCommandDelay}

@@ -1,25 +1,42 @@
-import { useState } from "react"
+import logoBase64 from "../../assets/logo-base64"
+import { useExtensionState } from "../../context/ExtensionStateContext"
+
+const getTimeBasedGreeting = () => {
+	const hour = new Date().getHours()
+	if (hour < 12) return "Good morning"
+	if (hour < 18) return "Good afternoon"
+	return "Good evening"
+}
 
 const RooHero = () => {
-	const [imagesBaseUri] = useState(() => {
-		const w = window as any
-		return w.IMAGES_BASE_URI || ""
-	})
+	const { websiteUsername, websiteNotAuthenticated } = useExtensionState()
 
 	return (
-		<div className="flex flex-col items-center justify-center pb-4 forced-color-adjust-none">
-			<div
-				style={{
-					backgroundColor: "var(--vscode-foreground)",
-					WebkitMaskImage: `url('${imagesBaseUri}/roo-logo.svg')`,
-					WebkitMaskRepeat: "no-repeat",
-					WebkitMaskSize: "contain",
-					maskImage: `url('${imagesBaseUri}/roo-logo.svg')`,
-					maskRepeat: "no-repeat",
-					maskSize: "contain",
-				}}
-				className="mx-auto">
-				<img src={imagesBaseUri + "/roo-logo.svg"} alt="Roo logo" className="h-8 opacity-0" />
+		<div className="flex flex-col pb-1 forced-color-adjust-none" style={{ paddingLeft: 24, paddingTop: 16 }}>
+			{/* Logo and greeting positioned at very top left */}
+			<div className="flex items-center gap-3 mb-6" style={{ alignSelf: "flex-start" }}>
+				<img
+					src={logoBase64}
+					alt="SyntX Logo"
+					style={{
+						width: "80px",
+						height: "80px",
+					}}
+				/>
+				{!websiteNotAuthenticated && websiteUsername && (
+					<div>
+						<h2
+							className="text-xl font-medium"
+							style={{
+								margin: 0,
+								background: "linear-gradient(90deg, orange, white)",
+								WebkitBackgroundClip: "text",
+								WebkitTextFillColor: "transparent",
+							}}>
+							{getTimeBasedGreeting()} {websiteUsername}!
+						</h2>
+					</div>
+				)}
 			</div>
 		</div>
 	)
