@@ -24,10 +24,19 @@ export const useTaskSearch = () => {
 	}, [searchQuery, sortOption, lastNonRelevantSort])
 
 	const presentableTasks = useMemo(() => {
-		let tasks = taskHistory.filter((item) => item.ts && item.task)
-		if (!showAllWorkspaces) {
-			tasks = tasks.filter((item) => item.workspace === cwd || !item.workspace || item.workspace === "Unknown")
+		// Filter for valid tasks only (must have timestamp and task content)
+		const tasks = taskHistory.filter((item) => item.ts && item.task)
+
+		// Filter by workspace unless showAllWorkspaces is enabled
+		if (!showAllWorkspaces && cwd) {
+			// Normalize workspace paths for comparison
+			const normalizedCurrentWorkspace = cwd.replace(/\/$/, "") // Remove trailing slash
+			return tasks.filter((task) => {
+				const normalizedTaskWorkspace = task.workspace?.replace(/\/$/, "") || ""
+				return normalizedTaskWorkspace === normalizedCurrentWorkspace
+			})
 		}
+
 		return tasks
 	}, [taskHistory, showAllWorkspaces, cwd])
 
